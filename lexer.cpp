@@ -166,12 +166,100 @@ static std::unique_ptr<ExprAST> ParseParenExpr() {
   return V;
 }
 
+static std::unique_ptr<ExprAST> ParseIdentifierExpr() {
+  std::string IdName = IdentifierStr;
+
+  getNextToken(); //consume the identifier string. 
+  if (CurTok != '(')
+    return std::make_unique<VariableExprAST>(IdName);
+
+  //get the next token.
+  getNextToken(); // consume (
+  std::vector<std::unique_ptr<ExprAST>> Args;
+  if (CurTok != ')')
+    while (true) {
+      if (auto Arg = ParseExpression())
+        Args.push_back(std::move(Arg));
+      else
+        return nullptr;
+
+      if (CurTok == ')')
+        break;
+      
+      if (CurTok != ',')
+        return LogError("Expected ')' or ',' in argument list");
+      getNextToken();
+    }
+
+  //eat ')' token.
+  getNextToken();
+  return std::make_unique<CallExprAST>(IdName, std::move(Args));
+}
+
+static std::unique_ptr<ExprAST> ParsePrimary() {
+  switch(CurTok) {
+    default:
+      return LogError("unknown token when expecting an expression.");
+    case tok_identifier:
+      return ParseIdentifierExpr();
+    case tok_number:
+      return ParseNumberExpr();
+    case '(':
+      return ParseParenExpr();
+  }
+}
+//precedence table.
+static std::map<char, int> BinopPrecedence;
+
+static int GetTokPrecedence()
+{
+  if (!isascii(CurTok))
+    return -1;
+
+  int TokPrec = BinopPrecedence[CurTok];
+  if (TokPrec <= 0) return -1;
+  return TokPrec;
+}
 
 static std::unique_ptr<ExprAST> ParseExpression() {
+  auto LHS = ParsePrimary();
+  if (!LHS)
+    return nullptr;
 
+  return ParseBinOpRHS(0, std::move(LHS));
+}
+
+static std::unique_ptr<ExprAST> ParseBinOpRHS(int ExprPrec, 
+    std::unique_ptr<ExprAST> LHS)
+{
+  while (true) {
+    //if this is a binop, find its precedence.
+    int TokPrec = GetTokPrecedence();
+
+    //if this is a binop that binds atleast as tightly as the current binop.
+    //consume it, otherwise done.
+    if (TokPrec < ExprPrec)
+      return LHS;
+
+    int BinOp = CurTok;
+    getNextToken();    // consume binop.
+
+    auto RHS = ParsePrimary();
+    if (!RHS)
+      return nullptr;
+
+
+
+  }
 }
 
 
+int main() {
+  BinopPrecedence['<'] = 10;
+  BinopPrecedence['+'] = 20;
+  BinopPrecedence['-'] = 20;
+  BinopPrecedence['*'] = 40;
+}
 
 
 
