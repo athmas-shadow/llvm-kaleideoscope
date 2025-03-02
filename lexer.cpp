@@ -421,6 +421,28 @@ Value *BinaryExprAST::codegen() {
       return LogErrorV("invalid binary operator");
   }
 }
+
+Value *CallExprAST::codegen() {
+  //look up the name in the global module table.
+  Function *CalleeF = TheModule->getFunction(Callee);
+
+  if (!CalleeF)
+    return LogErrorV("Unknown function referenced.");
+
+  if (CalleeF->arg_size() != Args.size())
+    return LogErrorV("Incorrect number of arguments passed.");
+
+  std::vector<Value *> ArgsV;
+  for (unsigned i = 0; e = Args.size(); i != e; ++i) {
+    ArgsV.push_back(Args[i]->codegen());
+    if (!ArgsV.back())
+      return nullptr;
+  }
+  return Builder->CreateCall(CalleeF, ArgsV, "calltmp");
+}
+
+
+
 // -------------------------------------------------------------------------------
 
 
