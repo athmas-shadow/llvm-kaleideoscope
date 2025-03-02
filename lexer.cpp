@@ -1,3 +1,15 @@
+#include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Type.h"
+#include "llvm/IR/Verifier.h"
+#include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -77,6 +89,7 @@ namespace {
 class ExprAST {
   public:
     virtual ~ExprAST() = default;
+    virtual Value *codegen() = 0;
 };
 
 //NumberExprAST <---> Expression class for all numeric literals.
@@ -84,6 +97,7 @@ class NumberExprAST : public ExprAST {
   double Val;
   public:
     NumberExprAST(double Val) : Val(Val) {}
+    Value *codegen() override;
 };   
 
 class VariableExprAST : public ExprAST { // Expression class for  referencing 
@@ -362,6 +376,53 @@ static void MainLoop()
     }
   }
 }
+
+// ---------------------------- Code Generation. ---------------------------------
+static std::unique_ptr<LLVMContext> Context; // contains alot of core LLVM data structures.
+static std::unique_ptr<IRBuilder<>> Builder; // makes it easy to generate LLVM instructions.
+static std::unique_ptr<Module> TheModule;    // contains functions and global variables.
+static std::map<std::stirng, Value *> NamedValues; // keeps track of which values are defined in the current scope and what their llvm representation is.
+
+Value *LogErrorV(const char *Str) {
+  LogError(Str);
+  return nullptr;
+}
+
+Value *NumberExprAST::codegen() {
+  return ConstandFP::get(*Context, APFloat(Val));
+}
+
+Value *VariableExprAST::codegen() {
+  Value *V = NamedValues[Name];
+  if (!V)
+    LogErrorV("Unknown variable name");
+  return V;
+}
+
+Value *BinaryExprAST::codegen() {
+  Value *L = LHS->codegen();
+  Value *R = RHS->codegen();
+
+  if (!L || !R)
+    return nullptr;
+
+  switch (Op) {
+    case '+':
+      return Builder->CreateFAdd(L, R, "addtmp");
+    case '-':
+      return Builder->CreateFSub(L, R, "subtmp");
+    case '*':
+      return Builder->CreateFMul(L, R, "multmp");
+    case '<':
+      L = Builder->CreateFCmpULT(L, R, "cmptmp");
+      //convert bool 0/1 to double 0.0 or 1.0 
+      return Builder->CreateUIToFP(L, Type::getDoubleTy(*Context), "booltmp");
+    default:
+      return LogErrorV("invalid binary operator");
+  }
+}
+// -------------------------------------------------------------------------------
+
 
 int main() {
   BinopPrecedence['<'] = 10;
